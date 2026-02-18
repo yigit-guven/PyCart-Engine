@@ -1,6 +1,8 @@
-# PyCart-Engine
+# PyCart Engine
 
 A Python-powered mini-mall that lives in your terminal and thinks in JSON. This project simulates a backend e-commerce system with a command-line interface, demonstrating core programming concepts like file I/O, data management, and modular architecture.
+
+> **Note**: A **SQLite Version** is available in the [SQLite branch](https://github.com/yigit-guven/PyCart-Engine/tree/SQLite) if you prefer database storage over JSON files.
 
 ## How to run the program?
 
