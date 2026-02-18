@@ -45,7 +45,7 @@ A Python-powered mini-mall that lives in your terminal. This project simulates a
 
 ## How data is stored?
 
-Data is stored in a single **SQLite Database** (`pycart.db`) instead of loose JSON files. This makes it safer and faster!
+Data is stored in a single **SQLite Database** (`pycart.db`) instead of loose JSON files.
 
 -   **`pycart.db`**: Stores `users`, `products`, `orders`, and `carts` in relational tables.
 -   **`db_editor.py`**: I wrote a custom tool to peek inside the database since you can't open `.db` files in Notepad.
