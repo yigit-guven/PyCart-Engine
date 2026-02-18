@@ -1,66 +1,80 @@
-from storage import load_data, save_data
+from database import get_db_connection
 
-CART_FILE = 'carts.json'
+CART_FILE = 'carts.json' # unused now
 
 class CartManager:
-    def __init__(self):
-        # Load all the carts
-        self.all_carts = load_data(CART_FILE)
-        if isinstance(self.all_carts, list):
-            # if it was a list we gotta fix it. JSON is hard.
-            self.all_carts = {} if not self.all_carts else self.all_carts
+    # Removed __init__ loading
 
     def get_user_cart(self, username):
-        return self.all_carts.get(username, [])
+        conn = get_db_connection()
+        # getting cart items AND product info at the same time.
+        #joined tables to get the price.
+        query = '''
+            SELECT c.product_id, c.qty, p.name, p.price 
+            FROM cart c
+            JOIN products p ON c.product_id = p.product_id
+            WHERE c.username = ?
+        '''
+        items = conn.execute(query, (username,)).fetchall()
+        conn.close()
+        return [dict(i) for i in items]
 
     def add_to_cart(self, username, product, quantity):
-        if username not in self.all_carts:
-            self.all_carts[username] = []
+        conn = get_db_connection()
+        cursor = conn.cursor()
         
-        cart = self.all_carts[username]
-        
-        # check if they already have it, if yes, just add the numbers
-        for item in cart:
-            if item['product_id'] == product['product_id']:
-                # total stock limit including what's already in cart:
-                if item['qty'] + quantity > product['stock']:
-                    print(f"Error: Not enough stock. You have {item['qty']} in cart, stock is {product['stock']}.")
-                    return
-                item['qty'] += quantity
-                print("Updated quantity in cart.")
-                self._save()
-                return
-
-        # new item adding to cart
-        if quantity > product['stock']:
-            print("Error: Not enough stock.")
+        # check stock first (db has latest)
+        db_product = conn.execute("SELECT stock FROM products WHERE product_id = ?", (product['product_id'],)).fetchone()
+        if not db_product:
+            print("Error: Product not found.")
+            conn.close()
             return
 
-        cart.append({
-            "product_id": product['product_id'],
-            "name": product['name'],
-            "price": product['price'],
-            "qty": quantity
-        })
-        print("Item added to cart.")
-        self._save()
+        current_stock = db_product['stock']
+        
+        # Check existing cart qty
+        existing_item = conn.execute("SELECT qty FROM cart WHERE username = ? AND product_id = ?", 
+                                     (username, product['product_id'])).fetchone()
+        
+        current_cart_qty = existing_item['qty'] if existing_item else 0
+        
+        if current_cart_qty + quantity > current_stock:
+             print(f"Error: Not enough stock. You have {current_cart_qty} in cart, stock is {current_stock}.")
+             conn.close()
+             return
+
+        if existing_item:
+            # Update existing
+            new_qty = current_cart_qty + quantity
+            cursor.execute("UPDATE cart SET qty = ? WHERE username = ? AND product_id = ?", 
+                           (new_qty, username, product['product_id']))
+            print("Updated quantity in cart.")
+        else:
+            # Insert new
+            cursor.execute("INSERT INTO cart (username, product_id, qty) VALUES (?, ?, ?)",
+                           (username, product['product_id'], quantity))
+            print("Item added to cart.")
+            
+        conn.commit()
+        conn.close()
 
     def remove_from_cart(self, username, product_id):
-        if username in self.all_carts:
-            # filter from stackoverflow
-            original_len = len(self.all_carts[username])
-            self.all_carts[username] = [item for item in self.all_carts[username] if item['product_id'] != product_id]
-            
-            if len(self.all_carts[username]) < original_len:
-                print("Item removed.")
-                self._save()
-            else:
-                print("Item not found in cart.")
+        conn = get_db_connection()
+        cursor = conn.execute("DELETE FROM cart WHERE username = ? AND product_id = ?", (username, product_id))
+        conn.commit()
+        
+        if cursor.rowcount > 0:
+            print("Item removed.")
+        else:
+            print("Item not found in cart.")
+        conn.close()
 
     def clear_cart(self, username):
-        if username in self.all_carts:
-            self.all_carts[username] = []
-            self._save()
+        conn = get_db_connection()
+        conn.execute("DELETE FROM cart WHERE username = ?", (username,))
+        conn.commit()
+        conn.close()
 
     def _save(self):
-        save_data(CART_FILE, self.all_carts)
+        # No longer needed, DB saves immediately
+        pass

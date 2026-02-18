@@ -1,99 +1,132 @@
-from storage import load_data, save_data
+from database import get_db_connection
 
-PRODUCT_FILE = 'products.json'
+PRODUCT_FILE = 'products.json' # keeping this variable just in case, but not using it.
 
 class ProductManager:
-    def __init__(self):
-        self.products = load_data(PRODUCT_FILE)
+    # Removed __init__ since we don't load a list anymore
 
     def list_products(self):
         # list of stuff we are selling
-        return self.products
+        conn = get_db_connection()
+        products = conn.execute("SELECT * FROM products").fetchall()
+        conn.close()
+        # converting to list of dicts to keep compatible with main.py
+        return [dict(p) for p in products]
 
     def search_products(self, keyword):
         # search thingy. not case senseticve
-        results = []
-        for p in self.products:
-            if keyword.lower() in p['name'].lower():
-                results.append(p)
-        return results
+        conn = get_db_connection()
+        # SQL LIKE is case insensitive in SQLite usually
+        products = conn.execute("SELECT * FROM products WHERE name LIKE ?", ('%' + keyword + '%',)).fetchall()
+        conn.close()
+        return [dict(p) for p in products]
 
     def get_product_by_id(self, product_id):
         # finding a specific item by its code
-        for p in self.products:
-            if p['product_id'] == product_id:
-                return p
+        conn = get_db_connection()
+        product = conn.execute("SELECT * FROM products WHERE product_id = ?", (product_id,)).fetchone()
+        conn.close()
+        if product:
+            return dict(product)
         return None
 
     def update_stock(self, product_id, quantity_sold):
         # reducing stock when someone buys. return True if we have enough, else False.
-        for p in self.products:
-            if p['product_id'] == product_id:
-                if p['stock'] >= quantity_sold:
-                    p['stock'] -= quantity_sold
-                    save_data(PRODUCT_FILE, self.products)  # save it again!
-                    return True
-                return False
+        conn = get_db_connection()
+        product = conn.execute("SELECT stock FROM products WHERE product_id = ?", (product_id,)).fetchone()
+        
+        if product and product['stock'] >= quantity_sold:
+            new_stock = product['stock'] - quantity_sold
+            conn.execute("UPDATE products SET stock = ? WHERE product_id = ?", (new_stock, product_id))
+            conn.commit()
+            conn.close()
+            return True
+        
+        conn.close()
         return False
 
     # Admin features, BONUS EXTENSION
     def add_product(self, name, price, stock):
-        # admin add
-        if not self.products:
-            new_id = "P1001"
-        else:
-            # find the biggest id and add 1
+        # admin add. now with auto-id generation. fancy!
+        conn = get_db_connection()
+        
+        # find the biggest id logic (Pxxxx)
+        # doing it in python because i know how loops work better than sql.
+        try:
+            # Get all ids to find max
+            products = conn.execute("SELECT product_id FROM products").fetchall()
             max_id = 0
-            for p in self.products:
+            for p in products:
                 try:
-                    # remove the P and turn into number
                     pid_str = p['product_id']
                     if pid_str.startswith('P'):
                         pid = int(pid_str[1:])
                         if pid > max_id:
                             max_id = pid
                 except ValueError:
-                    pass # ignore weird ids
-            
-            # format it back to Pxxxx
+                    pass
             new_id = f"P{max_id + 1}"
-
-        new_product = {
-            "product_id": new_id,
-            "name": name,
-            "price": float(price),
-            "stock": int(stock)
-        }
-        self.products.append(new_product)
-        save_data(PRODUCT_FILE, self.products)
-        return True
+            
+            conn.execute("INSERT INTO products (product_id, name, price, stock) VALUES (?, ?, ?, ?)",
+                         (new_id, name, float(price), int(stock)))
+            conn.commit()
+            print(f"Product added with ID: {new_id}")
+            return True
+        except Exception as e:
+            print(f"Error adding product: {e}")
+            return False
+        finally:
+            conn.close()
 
     def delete_product(self, product_id):
         # admin delete
-        for i, p in enumerate(self.products):
-            if p['product_id'] == product_id:
-                del self.products[i]
-                save_data(PRODUCT_FILE, self.products)
-                return True
-        return False
+        conn = get_db_connection()
+        # check fields to see if it exists first? or just delete.
+        cursor = conn.execute("DELETE FROM products WHERE product_id = ?", (product_id,))
+        conn.commit()
+        deleted = cursor.rowcount > 0
+        conn.close()
+        return deleted
 
     def update_product(self, product_id, name=None, price=None, stock=None):
         # admin update details
-        for p in self.products:
-            if p['product_id'] == product_id:
-                if name:
-                    p['name'] = name
-                if price:
-                    try:
-                        p['price'] = float(price)
-                    except ValueError:
-                        return False
-                if stock:
-                    try:
-                        p['stock'] = int(stock)
-                    except ValueError:
-                        return False
+        conn = get_db_connection()
+        product = conn.execute("SELECT * FROM products WHERE product_id = ?", (product_id,)).fetchone()
+        
+        if not product:
+            conn.close()
+            return False
+            
+        # building the query piece by piece.
+        updates = []
+        params = []
+        
+        if name:
+            updates.append("name = ?")
+            params.append(name)
+        if price:
+            try:
+                updates.append("price = ?")
+                params.append(float(price))
+            except ValueError:
+                conn.close()
+                return False
+        if stock:
+            try:
+                updates.append("stock = ?")
+                params.append(int(stock))
+            except ValueError:
+                conn.close()
+                return False
                 
-                save_data(PRODUCT_FILE, self.products)
-                return True
-        return False
+        if not updates:
+            conn.close()
+            return True # nothing to update
+            
+        params.append(product_id)
+        query = f"UPDATE products SET {', '.join(updates)} WHERE product_id = ?"
+        
+        conn.execute(query, params)
+        conn.commit()
+        conn.close()
+        return True

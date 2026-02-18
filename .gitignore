@@ -62,13 +62,8 @@ ENV/
 env.bak/
 venv.bak/
 
-# Validated seed data (Do not ignore)
-!products.json
-!users.json
-
-# Runtime data (Do ignore)
-carts.json
-orders.json
+# Database
+*.db
 
 # IDEs
 .idea/
