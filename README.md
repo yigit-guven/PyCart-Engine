@@ -51,6 +51,8 @@ Data is stored in local JSON files to simulate a database:
 
 ## Known limitations
 
--   **Concurrency**: The system uses loose file-based storage. Simultaneous writes by multiple instances could theoretically cause race conditions or data corruption (though unlikely in a single-user CLI environment).
--   **Interface**: Strictly command-line based. No graphical user interface (GUI) or web frontend.
--   **Scalability**: JSON files are loaded entirely into memory. This works great for small datasets but would need migration to a SQL database (like SQLite or PostgreSQL) for millions of records.
+- **Only one user at a time**: Since we're just saving to JSON files, if two people try to buy stuff at the exact same second, the files might get a bit confused. It's meant for one person on one computer right now.
+- **No GUI**: It's all in the black box (terminal).
+- **No password recovery**: If you forget your password, there's no "Forgot Password" button. You'll have to manually find yourself in `users.json` or just make a new account.
+- **Order history is just a list**: You can't search through your old orders. If you buy a lot of stuff, you'll have to scroll a long way to find something from last week.
+- **Deleting files wipes everything**: There's no "cloud backup." if you delete the `.json` files, the whole store is basically gone forever.
